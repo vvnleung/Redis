@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <assert.h>
+
 // create a TCP Server
 
 static void msg(const char *msg) {
@@ -20,20 +22,9 @@ static void die(const char *msg) {
     exit(1);
 }
 
+const size_t k_max_msg = 4096;
+
 //Read & write
-static void do_something(int connfd) {
-    char rbuf[64] = {};
-    ssize_t n = read(connfd, rbuf, sizeof(rbuf) - 1);
-    if (n < 0) {
-        msg("read() error");
-        return;
-    }
-    printf("client says: %s\n", rbuf);
-
-    char wbuf[] = "world";
-    write(connfd, wbuf, strlen(wbuf));
-}
-
 
 static int32_t read_full(int fd, char *buf, size_t n) {
     while (n > 0) {
@@ -59,6 +50,42 @@ static int32_t write_all(int fd, const char *buf, size_t n) {
         buf += rv;
     }
     return 0;
+}
+
+static int32_t one_request(int connfd) {
+    // 4 bytes header
+    char rbuf[4 + k_max_msg];
+    errno = 0;
+    int32_t err = read_full(connfd, rbuf, 4);
+    if (err) {
+        msg(errno == 0 ? "EOF" : "read() error");
+        return err;
+    }
+
+    uint32_t len = 0;
+    memcpy(&len, rbuf, 4);  // assume little endian
+    if (len > k_max_msg) {
+        msg("too long");
+        return -1;
+    }
+
+    // request body
+    err = read_full(connfd, &rbuf[4], len);
+    if (err) {
+        msg("read() error");
+        return err;
+    }
+
+    // do something
+    fprintf(stderr, "client says: %.*s\n", len, &rbuf[4]);
+
+    // reply using the same protocol
+    const char reply[] = "world";
+    char wbuf[4 + sizeof(reply)];
+    len = (uint32_t)strlen(reply);
+    memcpy(wbuf, &len, 4);
+    memcpy(&wbuf[4], reply, len);
+    return write_all(connfd, wbuf, 4 + len);
 }
 
 
@@ -103,7 +130,7 @@ int main(){
             continue;   // error
         }
 
-        // do_something(connfd);  //Read & write
+        //Read & write
 
         while(true) {
             int32_t err = one_request(connfd); //The one_request function will read 1 request and write 1 response.
