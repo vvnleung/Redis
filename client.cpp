@@ -116,7 +116,7 @@ int main() {
         goto L_DONE;
     }
 
-L_DONE:
-    close(fd);
+L_DONE: // if error happened, goto here
+    close(fd); // ensure the source is close avoiding source leaking
     return 0;
 }
